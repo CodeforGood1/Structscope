@@ -1,0 +1,10 @@
+node_modules/
+out/
+.pytest_cache/
+python/__pycache__/
+tests/__pycache__/
+python/*.pyc
+*.vsix
+.venv/
+venv/
+dist/

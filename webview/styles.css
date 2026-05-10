@@ -1,0 +1,239 @@
+:root {
+  color-scheme: light dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-sideBar-background);
+}
+
+.top-bar h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vscode-descriptionForeground);
+}
+
+select {
+  color: var(--vscode-dropdown-foreground);
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border);
+  padding: 4px 8px;
+}
+
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+#byte-map,
+#field-table,
+#suggestions,
+#metrics {
+  min-height: 32px;
+}
+
+.metrics-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metrics-meta {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(100px, 1fr));
+  gap: 8px;
+}
+
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--vscode-panel-border);
+  background: var(--vscode-editorWidget-background);
+  border-radius: 4px;
+}
+
+.metric-label {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.metric-card strong {
+  font-size: 16px;
+}
+
+.cache-ruler {
+  position: relative;
+  height: 22px;
+  min-width: 100%;
+  overflow: visible;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  margin-bottom: 4px;
+}
+
+.cache-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--vscode-editorWarning-foreground);
+}
+
+.cache-marker span {
+  position: absolute;
+  top: 0;
+  left: 4px;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+
+.byte-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.byte-cell {
+  position: relative;
+  width: 20px;
+  height: 28px;
+  flex: 0 0 20px;
+  margin-bottom: 1px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 20%, transparent);
+  color: #111;
+  text-align: center;
+  line-height: 26px;
+  font-size: 9px;
+}
+
+.byte-cell.field span {
+  opacity: 0.75;
+}
+
+.byte-cell.padding,
+.byte-cell.trailing {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      color-mix(in srgb, var(--vscode-editor-foreground) 18%, transparent) 0,
+      color-mix(in srgb, var(--vscode-editor-foreground) 18%, transparent) 3px,
+      transparent 3px,
+      transparent 6px
+    );
+}
+
+.byte-cell.trailing {
+  opacity: 0.55;
+}
+
+.byte-cell.split {
+  outline: 2px solid var(--vscode-errorForeground);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.field-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.field-table th,
+.field-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.field-table th {
+  color: var(--vscode-descriptionForeground);
+  font-weight: 600;
+}
+
+.field-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 20%, transparent);
+  vertical-align: -1px;
+}
+
+.table-summary {
+  margin-top: 8px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.suggestion-banner,
+.suggestion-ok {
+  margin-bottom: 8px;
+  color: var(--vscode-editor-foreground);
+}
+
+pre {
+  margin: 0 0 8px;
+  padding: 10px;
+  overflow-x: auto;
+  background: var(--vscode-textCodeBlock-background);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+}
+
+button {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border: 0;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+@media (max-width: 560px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, minmax(100px, 1fr));
+  }
+
+  .top-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

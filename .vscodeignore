@@ -1,0 +1,11 @@
+node_modules/
+src/
+tests/
+python/__pycache__/
+python/**/__pycache__/
+.pytest_cache/
+*.map
+tsconfig.json
+*.ts
+PROGRESS.md
+package-lock.json

@@ -1,0 +1,65 @@
+{
+  "name": "structscope",
+  "displayName": "StructScope",
+  "publisher": "blackplane-systems",
+  "version": "0.1.0",
+  "description": "Visualize C, C++, and Rust struct memory layout, padding, cache-line splits, and reorder suggestions.",
+  "author": {
+    "name": "Brahadeesh V Ra",
+    "email": "144269250+CodeforGood1@users.noreply.github.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Blackplane-Systems/Structscope.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onLanguage:c",
+    "onLanguage:cpp",
+    "onLanguage:rust"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc --noEmit",
+    "build": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=out/extension.js",
+    "package": "vsce package"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "structscope.analyzeStruct",
+        "title": "StructScope: Analyze Struct"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "structscope.analyzeStruct",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m"
+      }
+    ],
+    "configuration": {
+      "title": "StructScope",
+      "properties": {
+        "structscope.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Python executable path used to run StructScope's analysis server."
+        }
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.27.0",
+    "typescript": "^5.4.0"
+  }
+}
