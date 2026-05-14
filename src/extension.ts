@@ -51,6 +51,18 @@ type AnalysisResult = {
 type AnalyseResponse = {
   structs?: StructAnalysis[];
   error?: string;
+  platform?: string;
+  requested_platform?: string;
+  cache_line?: number;
+};
+
+type DetectPlatformResponse = {
+  platform?: string;
+  machine?: string;
+  system?: string;
+  pointer_size?: number;
+  source?: string;
+  error?: string;
 };
 
 type AnalysisContext = {
@@ -58,6 +70,14 @@ type AnalysisContext = {
   source: string;
   language: SupportedLanguage;
   cursorLine: number;
+};
+
+type StructScopeSettings = {
+  defaultPlatform: string;
+  cacheLine: number;
+  analyzeOnSave: boolean;
+  autoOpenPanel: boolean;
+  showStatusBar: boolean;
 };
 
 export class PythonServer {
@@ -152,21 +172,67 @@ export class PythonServer {
   }
 }
 
+class StructScopeTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+  private readonly changeEmitter = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();
+  readonly onDidChangeTreeData = this.changeEmitter.event;
+
+  refresh(): void {
+    this.changeEmitter.fire();
+  }
+
+  getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
+    return element;
+  }
+
+  getChildren(): vscode.ProviderResult<vscode.TreeItem[]> {
+    const items: vscode.TreeItem[] = [
+      actionItem('Analyze Current File', 'structscope.analyzeStruct', 'play'),
+      actionItem('Open Dashboard', 'structscope.openPanel', 'layout-panel'),
+      actionItem('Copy Last JSON', 'structscope.copyAnalysisJson', 'copy'),
+      actionItem('Show Output Log', 'structscope.showOutput', 'output')
+    ];
+
+    items.push(infoItem(`Platform: ${selectedPlatform}${detectedPlatformLabel ? ` (${detectedPlatformLabel})` : ''}`, 'circuit-board'));
+    items.push(infoItem(`Cache line: ${selectedCacheLine}B`, 'symbol-numeric'));
+    items.push(infoItem(`Last struct: ${lastStructName || 'none'}`, 'symbol-structure'));
+    return items;
+  }
+}
+
+function actionItem(label: string, command: string, icon: string): vscode.TreeItem {
+  const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+  item.iconPath = new vscode.ThemeIcon(icon);
+  item.command = { command, title: label };
+  return item;
+}
+
+function infoItem(label: string, icon: string): vscode.TreeItem {
+  const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+  item.iconPath = new vscode.ThemeIcon(icon);
+  return item;
+}
+
 let outputChannel: vscode.OutputChannel | undefined;
 let currentPanel: vscode.WebviewPanel | undefined;
 let diagnosticCollection: vscode.DiagnosticCollection | undefined;
+let statusBarItem: vscode.StatusBarItem | undefined;
+let treeProvider: StructScopeTreeProvider | undefined;
 let selectedPlatform = 'x86_64';
 let selectedCacheLine = 64;
+let detectedPlatformLabel = '';
 let lastAnalysisContext: AnalysisContext | undefined;
 let lastStructName: string | undefined;
 let lastKnownStructs: StructAnalysis[] | undefined;
+let lastAnalysisJson: string | undefined;
 let selectionDebounce: NodeJS.Timeout | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel('StructScope');
   diagnosticCollection = vscode.languages.createDiagnosticCollection('structscope');
+  treeProvider = new StructScopeTreeProvider();
   context.subscriptions.push(outputChannel);
   context.subscriptions.push(diagnosticCollection);
+  context.subscriptions.push(vscode.window.registerTreeDataProvider('structscope.dashboard', treeProvider));
 
   const server = new PythonServer();
   const serverScript = context.asAbsolutePath(path.join('python', 'server.py'));
@@ -199,9 +265,49 @@ export async function activate(context: vscode.ExtensionContext) {
     outputChannel.appendLine(`Ping failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
+  await applyConfiguredDefaults(server);
+  statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  statusBarItem.command = 'structscope.analyzeStruct';
+  statusBarItem.tooltip = 'StructScope: analyze the active C, C++, or Rust file';
+  context.subscriptions.push(statusBarItem);
+  updateStatusBar();
+
   context.subscriptions.push(
     vscode.commands.registerCommand('structscope.analyzeStruct', async () => {
       await analyzeActiveDocument(context, server);
+    }),
+    vscode.commands.registerCommand('structscope.openPanel', async () => {
+      openStructScopePanel(context, server);
+      if (vscode.window.activeTextEditor && languageFromDocument(vscode.window.activeTextEditor.document)) {
+        await analyzeActiveDocument(context, server);
+      } else {
+        await rerunLastAnalysis(context, server);
+      }
+    }),
+    vscode.commands.registerCommand('structscope.copyAnalysisJson', async () => {
+      if (!lastAnalysisJson) {
+        vscode.window.showInformationMessage('No StructScope analysis has run yet.');
+        return;
+      }
+      await vscode.env.clipboard.writeText(lastAnalysisJson);
+      vscode.window.showInformationMessage('StructScope analysis JSON copied.');
+    }),
+    vscode.commands.registerCommand('structscope.showOutput', () => {
+      outputChannel?.show(true);
+    }),
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      void analyzeSavedDocument(context, server, document);
+    }),
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
+      if (!event.affectsConfiguration('structscope')) {
+        return;
+      }
+      await applyConfiguredDefaults(server);
+      updateStatusBar();
+      treeProvider?.refresh();
+      if (lastAnalysisContext) {
+        await rerunLastAnalysis(context, server);
+      }
     }),
     vscode.window.onDidChangeTextEditorSelection((event) => {
       if (!currentPanel) {
@@ -226,6 +332,11 @@ export async function activate(context: vscode.ExtensionContext) {
     },
     { dispose: () => server.dispose() }
   );
+
+  const activeEditor = vscode.window.activeTextEditor;
+  if (activeEditor && languageFromDocument(activeEditor.document) && getSettings().analyzeOnSave && currentPanel) {
+    void analyzeActiveDocument(context, server);
+  }
 }
 
 export function deactivate() {
@@ -238,6 +349,53 @@ function getPythonCandidates(): string[] {
     return [configured, 'python3', 'python'];
   }
   return ['python3', 'python'];
+}
+
+function getSettings(): StructScopeSettings {
+  const config = vscode.workspace.getConfiguration('structscope');
+  return {
+    defaultPlatform: config.get<string>('defaultPlatform', 'auto'),
+    cacheLine: config.get<number>('cacheLine', 64),
+    analyzeOnSave: config.get<boolean>('analyzeOnSave', true),
+    autoOpenPanel: config.get<boolean>('autoOpenPanel', true),
+    showStatusBar: config.get<boolean>('showStatusBar', true)
+  };
+}
+
+async function applyConfiguredDefaults(server: PythonServer): Promise<void> {
+  const settings = getSettings();
+  selectedCacheLine = settings.cacheLine;
+  if (settings.defaultPlatform === 'auto') {
+    selectedPlatform = await detectPlatform(server);
+    detectedPlatformLabel = 'auto';
+  } else {
+    selectedPlatform = settings.defaultPlatform;
+    detectedPlatformLabel = '';
+  }
+  outputChannel?.appendLine(`Defaults: platform=${selectedPlatform}${detectedPlatformLabel ? ' via auto-detect' : ''}, cacheLine=${selectedCacheLine}`);
+}
+
+async function detectPlatform(server: PythonServer): Promise<string> {
+  const response = (await server.send({ method: 'detect_platform' })) as DetectPlatformResponse;
+  if (response.error) {
+    throw new Error(response.error);
+  }
+  const platform = response.platform || 'x86_64';
+  outputChannel?.appendLine(`Detected host platform: ${platform} (${response.system || 'unknown'} ${response.machine || 'unknown'}, pointer=${response.pointer_size || '?'}B)`);
+  return platform;
+}
+
+function updateStatusBar(): void {
+  if (!statusBarItem) {
+    return;
+  }
+  if (!getSettings().showStatusBar) {
+    statusBarItem.hide();
+    return;
+  }
+  const suffix = lastStructName ? `: ${lastStructName}` : '';
+  statusBarItem.text = `$(symbol-structure) StructScope${suffix}`;
+  statusBarItem.show();
 }
 
 export function openStructScopePanel(context: vscode.ExtensionContext, server: PythonServer): vscode.WebviewPanel {
@@ -260,13 +418,25 @@ export function openStructScopePanel(context: vscode.ExtensionContext, server: P
   panel.webview.onDidReceiveMessage(async (message) => {
     outputChannel?.appendLine(`Webview message: ${JSON.stringify(message)}`);
     if (message?.type === 'platform-change' && typeof message.platform === 'string') {
-      selectedPlatform = message.platform;
+      selectedPlatform = message.platform === 'auto' ? await detectPlatform(server) : message.platform;
+      detectedPlatformLabel = message.platform === 'auto' ? 'auto' : '';
+      updateStatusBar();
+      treeProvider?.refresh();
+      await rerunLastAnalysis(context, server);
+    }
+    if (message?.type === 'detect-platform') {
+      selectedPlatform = await detectPlatform(server);
+      detectedPlatformLabel = 'auto';
+      updateStatusBar();
+      treeProvider?.refresh();
       await rerunLastAnalysis(context, server);
     }
     if (message?.type === 'cache-line-change') {
       const cacheLine = Number(message.cacheLine);
       if (Number.isFinite(cacheLine) && cacheLine > 0) {
         selectedCacheLine = cacheLine;
+        updateStatusBar();
+        treeProvider?.refresh();
         await rerunLastAnalysis(context, server);
       }
     }
@@ -347,6 +517,34 @@ async function analyzeActiveDocument(context: vscode.ExtensionContext, server: P
   await runAnalysis(context, server, analysisContext, true);
 }
 
+async function analyzeSavedDocument(
+  context: vscode.ExtensionContext,
+  server: PythonServer,
+  document: vscode.TextDocument
+): Promise<void> {
+  const settings = getSettings();
+  if (!settings.analyzeOnSave) {
+    return;
+  }
+  const language = languageFromDocument(document);
+  if (!language) {
+    return;
+  }
+  const editor = vscode.window.visibleTextEditors.find((item) => item.document.uri.toString() === document.uri.toString());
+  const cursorLine = editor ? editor.selection.active.line + 1 : 1;
+  await runAnalysis(
+    context,
+    server,
+    {
+      uri: document.uri,
+      source: document.getText(),
+      language,
+      cursorLine
+    },
+    settings.autoOpenPanel
+  );
+}
+
 async function rerunLastAnalysis(context: vscode.ExtensionContext, server: PythonServer): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (editor) {
@@ -396,6 +594,8 @@ async function runAnalysis(
     vscode.window.showErrorMessage(`StructScope analysis failed: ${response.error}`);
     return;
   }
+  selectedPlatform = response.platform || selectedPlatform;
+  selectedCacheLine = response.cache_line || selectedCacheLine;
   if (!response.structs || response.structs.length === 0) {
     clearDiagnostics(analysisContext.uri);
     lastKnownStructs = undefined;
@@ -403,6 +603,7 @@ async function runAnalysis(
     return;
   }
   lastKnownStructs = response.structs;
+  lastAnalysisJson = JSON.stringify(response, null, 2);
 
   const document = vscode.workspace.textDocuments.find((candidate) => candidate.uri.toString() === analysisContext.uri.toString());
   if (document) {
@@ -417,20 +618,30 @@ async function runAnalysis(
 
   lastAnalysisContext = analysisContext;
   lastStructName = selected.name;
-  const panel = openStructScopePanel(context, server);
-  if (revealPanel) {
+  updateStatusBar();
+  treeProvider?.refresh();
+  const panel = revealPanel || currentPanel ? openStructScopePanel(context, server) : undefined;
+  if (panel && revealPanel) {
     panel.reveal(vscode.ViewColumn.Beside);
   }
 
-  await panel.webview.postMessage({
-    type: 'layout',
-    data: {
-      ...selected,
-      platform: selectedPlatform,
-      cache_line: selectedCacheLine
-    }
-  });
-  await panel.webview.postMessage({ type: 'platform', value: selectedPlatform, cacheLine: selectedCacheLine });
+  if (panel) {
+    await panel.webview.postMessage({
+      type: 'layout',
+      data: {
+        ...selected,
+        platform: selectedPlatform,
+        platform_source: detectedPlatformLabel || 'manual',
+        cache_line: selectedCacheLine
+      }
+    });
+    await panel.webview.postMessage({
+      type: 'platform',
+      value: selectedPlatform,
+      source: detectedPlatformLabel || 'manual',
+      cacheLine: selectedCacheLine
+    });
+  }
 }
 
 async function handleSelectionSettled(
@@ -511,7 +722,7 @@ function updateDiagnostics(document: vscode.TextDocument, structs: StructAnalysi
       diagnostics.push(
         new vscode.Diagnostic(
           rangeForLine(document, struct.line),
-          `Struct is ${Math.round(struct.analysis.waste_ratio * 100)}% padding — consider reordering fields`,
+          `Struct is ${Math.round(struct.analysis.waste_ratio * 100)}% padding - consider reordering fields`,
           vscode.DiagnosticSeverity.Hint
         )
       );

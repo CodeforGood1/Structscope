@@ -9,3 +9,5 @@ tsconfig.json
 *.ts
 PROGRESS.md
 package-lock.json
+*.vsix
+.gitignore

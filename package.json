@@ -1,8 +1,8 @@
 {
-  "name": "structscope",
-  "displayName": "StructScope",
-  "publisher": "blackplane-systems",
-  "version": "0.1.0",
+  "name": "struct-scope",
+  "displayName": "Struct Scope",
+  "publisher": "BlackplaneSystems",
+  "version": "2.0.0",
   "description": "Visualize C, C++, and Rust struct memory layout, padding, cache-line splits, and reorder suggestions.",
   "author": {
     "name": "Brahadeesh V Ra",
@@ -21,6 +21,7 @@
     "Visualization"
   ],
   "activationEvents": [
+    "onStartupFinished",
     "onLanguage:c",
     "onLanguage:cpp",
     "onLanguage:rust"
@@ -29,15 +30,73 @@
   "scripts": {
     "compile": "tsc --noEmit",
     "build": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=out/extension.js",
-    "package": "vsce package"
+    "package": "vsce package",
+    "cli": "python python/cli.py"
   },
   "contributes": {
     "commands": [
       {
         "command": "structscope.analyzeStruct",
         "title": "StructScope: Analyze Struct"
+      },
+      {
+        "command": "structscope.openPanel",
+        "title": "StructScope: Open Dashboard"
+      },
+      {
+        "command": "structscope.copyAnalysisJson",
+        "title": "StructScope: Copy Last Analysis JSON"
+      },
+      {
+        "command": "structscope.showOutput",
+        "title": "StructScope: Show Output Log"
       }
     ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "structscope.analyzeStruct",
+          "when": "resourceLangId == c || resourceLangId == cpp || resourceLangId == rust",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "structscope.analyzeStruct",
+          "when": "resourceLangId == c || resourceLangId == cpp || resourceLangId == rust",
+          "group": "navigation"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "structscope.analyzeStruct",
+          "when": "view == structscope.dashboard",
+          "group": "navigation"
+        },
+        {
+          "command": "structscope.openPanel",
+          "when": "view == structscope.dashboard",
+          "group": "navigation"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "structscope",
+          "title": "StructScope",
+          "icon": "resources/structscope.svg"
+        }
+      ]
+    },
+    "views": {
+      "structscope": [
+        {
+          "id": "structscope.dashboard",
+          "name": "Dashboard"
+        }
+      ]
+    },
     "keybindings": [
       {
         "command": "structscope.analyzeStruct",
@@ -52,6 +111,33 @@
           "type": "string",
           "default": "",
           "description": "Optional Python executable path used to run StructScope's analysis server."
+        },
+        "structscope.defaultPlatform": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "x86_64", "arm64", "arm32", "avr", "riscv32"],
+          "description": "Default ABI platform. Use auto to detect the local host ABI."
+        },
+        "structscope.cacheLine": {
+          "type": "number",
+          "default": 64,
+          "enum": [32, 64, 128],
+          "description": "Default cache-line size in bytes."
+        },
+        "structscope.analyzeOnSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically analyze supported C, C++, and Rust files on save."
+        },
+        "structscope.autoOpenPanel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the StructScope dashboard automatically when analysis runs on save."
+        },
+        "structscope.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the StructScope status bar command."
         }
       }
     }

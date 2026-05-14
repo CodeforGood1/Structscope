@@ -227,6 +227,22 @@ button:hover {
   background: var(--vscode-button-hoverBackground);
 }
 
+.secondary-button {
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+  border: 1px solid var(--vscode-button-border, transparent);
+}
+
+.secondary-button:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+caption {
+  text-align: left;
+  margin-bottom: 6px;
+  color: var(--vscode-descriptionForeground);
+}
+
 @media (max-width: 560px) {
   .metrics-grid {
     grid-template-columns: repeat(2, minmax(100px, 1fr));

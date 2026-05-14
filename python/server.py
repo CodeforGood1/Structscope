@@ -12,7 +12,7 @@ from analyser import analyse
 from layout_engine import compute_layout
 from parser_c import parse_structs
 from parser_rust import parse_structs_rust
-from platforms import PLATFORMS, get_platform
+from platforms import PLATFORMS, detect_host_platform, detect_host_platform_info, get_platform
 
 
 RUST_FIXED = {
@@ -130,12 +130,10 @@ def _retarget_structs(structs: list[dict], platform: dict, language: str) -> lis
     return retargeted
 
 
-def _analyse_request(payload: dict[str, Any]) -> dict[str, Any]:
-    source = str(payload.get("source") or "")
-    language = str(payload.get("language") or "c")
-    platform_name = str(payload.get("platform") or "x86_64")
-    cache_line = int(payload.get("cache_line") or 64)
-    platform = get_platform(platform_name)
+def analyse_source(source: str, language: str, platform_name: str = "x86_64", cache_line: int = 64) -> dict[str, Any]:
+    requested_platform = platform_name or "x86_64"
+    actual_platform = detect_host_platform() if requested_platform == "auto" else requested_platform
+    platform = get_platform(actual_platform)
 
     if language in {"c", "cpp"}:
         parsed = parse_structs(source, language)
@@ -154,10 +152,23 @@ def _analyse_request(payload: dict[str, Any]) -> dict[str, Any]:
                 "line": struct.get("line"),
                 "fields": struct.get("fields", []),
                 "layout": layout,
-                "analysis": analyse(layout, platform_name, cache_line),
+                "analysis": analyse(layout, actual_platform, cache_line),
             }
         )
-    return {"structs": response_structs}
+    return {
+        "structs": response_structs,
+        "platform": actual_platform,
+        "requested_platform": requested_platform,
+        "cache_line": cache_line,
+    }
+
+
+def _analyse_request(payload: dict[str, Any]) -> dict[str, Any]:
+    source = str(payload.get("source") or "")
+    language = str(payload.get("language") or "c")
+    platform_name = str(payload.get("platform") or "x86_64")
+    cache_line = int(payload.get("cache_line") or 64)
+    return analyse_source(source, language, platform_name, cache_line)
 
 
 def handle_request(request: dict[str, Any]) -> dict[str, Any]:
@@ -166,6 +177,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any]:
         return {"pong": True}
     if method == "platforms":
         return {"platforms": list(PLATFORMS.keys())}
+    if method == "detect_platform":
+        return detect_host_platform_info()
     if method == "analyse":
         return _analyse_request(request)
     raise ValueError(f"Unknown method: {method}")

@@ -15,6 +15,7 @@ const state = {
   lastStruct: null,
   fieldColors: new Map(),
   platform: 'x86_64',
+  platformSource: 'manual',
   cacheLine: 64
 };
 
@@ -25,6 +26,7 @@ window.structscope = {
 
 const els = {
   platform: document.getElementById('platform'),
+  detectPlatform: document.getElementById('detect-platform'),
   cacheLine: document.getElementById('cache-line'),
   byteMap: document.getElementById('byte-map'),
   fieldTable: document.getElementById('field-table'),
@@ -41,11 +43,13 @@ window.addEventListener('message', (event) => {
     console.log('Received layout:', message.data);
     state.lastStruct = message.data;
     state.platform = message.data.platform || state.platform;
+    state.platformSource = message.data.platform_source || state.platformSource || 'manual';
     state.cacheLine = Number(message.data.cache_line || state.cacheLine || 64);
     renderStruct(message.data);
   }
   if (message.type === 'platform' && typeof message.value === 'string') {
     state.platform = message.value;
+    state.platformSource = message.source || state.platformSource || 'manual';
     state.cacheLine = Number(message.cacheLine || state.cacheLine || 64);
     if (els.platform) {
       els.platform.value = message.value;
@@ -62,6 +66,12 @@ window.addEventListener('message', (event) => {
 if (els.platform) {
   els.platform.addEventListener('change', () => {
     vscode.postMessage({ type: 'platform-change', platform: els.platform.value });
+  });
+}
+
+if (els.detectPlatform) {
+  els.detectPlatform.addEventListener('click', () => {
+    vscode.postMessage({ type: 'detect-platform' });
   });
 }
 
@@ -198,6 +208,9 @@ function renderFieldTable(layoutResult, analysisResult, tableEl) {
 
   const table = document.createElement('table');
   table.className = 'field-table';
+  const caption = document.createElement('caption');
+  caption.textContent = 'Struct field layout';
+  table.appendChild(caption);
   const thead = table.createTHead();
   const header = thead.insertRow();
   ['Field', 'Type', 'Offset', 'Size', 'Pad after', 'Note'].forEach((label) => {
@@ -223,10 +236,10 @@ function renderFieldTable(layoutResult, analysisResult, tableEl) {
 
     const notes = [];
     if (splitNames.has(field.name)) {
-      notes.push('⚠ cache split');
+      notes.push('cache split');
     }
     if (Number(field.padding_after || 0) > 0) {
-      notes.push('↔ padding');
+      notes.push('padding');
     }
     row.insertCell().textContent = notes.join(', ');
   });
@@ -249,7 +262,7 @@ function renderSuggestions(structName, layoutResult, analysisResult, suggestEl) 
   if (Number(analysisResult.savings || 0) > 0) {
     const banner = document.createElement('div');
     banner.className = 'suggestion-banner';
-    banner.textContent = `💡 Reordering fields saves ${analysisResult.savings} bytes (current: ${layoutResult.total_size} → optimal: ${analysisResult.optimal_size})`;
+    banner.textContent = `Reordering fields saves ${analysisResult.savings} bytes (current: ${layoutResult.total_size} -> optimal: ${analysisResult.optimal_size})`;
     suggestEl.appendChild(banner);
 
     const snippet = buildSuggestionSnippet(structName, analysisResult.optimal_order || layoutResult.fields || []);
@@ -269,7 +282,7 @@ function renderSuggestions(structName, layoutResult, analysisResult, suggestEl) 
   } else {
     const done = document.createElement('div');
     done.className = 'suggestion-ok';
-    done.textContent = '✓ Field order is already optimal for this platform.';
+    done.textContent = 'Field order is already optimal for this platform.';
     suggestEl.appendChild(done);
   }
 }
@@ -283,7 +296,7 @@ function renderMetrics(layoutResult, analysisResult, metricsEl) {
 
   const meta = document.createElement('div');
   meta.className = 'metrics-meta';
-  meta.textContent = `Platform: ${state.platform} | Cache line: ${state.cacheLine}B`;
+  meta.textContent = `Platform: ${state.platform} (${state.platformSource || 'manual'}) | Cache line: ${state.cacheLine}B`;
   metricsEl.appendChild(meta);
 
   const grid = document.createElement('div');

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import platform as host_platform
+import sys
 
 
 def _with_aliases(type_sizes: dict[str, int], type_alignments: dict[str, int]) -> tuple[dict[str, int], dict[str, int]]:
@@ -177,8 +179,37 @@ PLATFORMS: dict[str, dict[str, object]] = {
 def get_platform(name: str) -> dict[str, object]:
     """Return a defensive copy of an ABI table by name."""
 
+    if name == "auto":
+        name = detect_host_platform()
     try:
         return deepcopy(PLATFORMS[name])
     except KeyError as exc:
         known = ", ".join(sorted(PLATFORMS))
         raise ValueError(f"Unknown platform '{name}'. Known platforms: {known}") from exc
+
+
+def detect_host_platform() -> str:
+    """Best-effort host ABI detection for default local analysis."""
+
+    machine = host_platform.machine().lower()
+    pointer_bits = 64 if sys.maxsize > 2**32 else 32
+    if machine in {"x86_64", "amd64"}:
+        return "x86_64"
+    if machine in {"aarch64", "arm64"}:
+        return "arm64"
+    if machine.startswith("arm") or machine.startswith("armv7") or machine.startswith("armv6"):
+        return "arm32"
+    if "riscv" in machine:
+        return "riscv32" if pointer_bits == 32 else "x86_64"
+    return "x86_64" if pointer_bits == 64 else "arm32"
+
+
+def detect_host_platform_info() -> dict[str, object]:
+    detected = detect_host_platform()
+    return {
+        "platform": detected,
+        "machine": host_platform.machine(),
+        "system": host_platform.system(),
+        "pointer_size": PLATFORMS[detected]["pointer_size"],
+        "source": "host",
+    }

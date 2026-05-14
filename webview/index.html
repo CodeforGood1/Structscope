@@ -12,7 +12,8 @@
     <h1>StructScope</h1>
     <label class="control">
       <span>Platform</span>
-      <select id="platform">
+      <select id="platform" aria-label="ABI platform">
+        <option value="auto">Auto detect host</option>
         <option value="x86_64" selected>x86_64</option>
         <option value="arm64">arm64</option>
         <option value="arm32">arm32</option>
@@ -20,9 +21,10 @@
         <option value="riscv32">riscv32</option>
       </select>
     </label>
+    <button id="detect-platform" type="button" class="secondary-button" title="Detect host ABI">Detect</button>
     <label class="control">
       <span>Cache line</span>
-      <select id="cache-line">
+      <select id="cache-line" aria-label="Cache-line size">
         <option value="32">32</option>
         <option value="64" selected>64</option>
         <option value="128">128</option>
@@ -31,10 +33,10 @@
   </header>
   <main class="workspace">
     <section class="metrics-section">
-      <div id="metrics"></div>
+      <div id="metrics" aria-live="polite"></div>
     </section>
     <section class="map-section">
-      <div id="byte-map">Waiting for analysis...</div>
+      <div id="byte-map" role="img" aria-label="Struct byte map">Waiting for analysis...</div>
     </section>
     <section class="table-section">
       <div id="field-table"></div>
