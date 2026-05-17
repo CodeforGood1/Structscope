@@ -54,6 +54,7 @@ select {
 
 #byte-map,
 #field-table,
+#insights,
 #suggestions,
 #metrics {
   min-height: 32px;
@@ -204,6 +205,50 @@ select {
 .suggestion-ok {
   margin-bottom: 8px;
   color: var(--vscode-editor-foreground);
+}
+
+.insights-header {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.insight-card {
+  padding: 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--vscode-panel-border);
+  border-left: 4px solid var(--vscode-descriptionForeground);
+  background: var(--vscode-editorWidget-background);
+  border-radius: 4px;
+}
+
+.insight-card h2 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.insight-card p {
+  margin: 0 0 6px;
+}
+
+.insight-recommendation {
+  color: var(--vscode-editor-foreground);
+}
+
+.insight-meta {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.severity-critical {
+  border-left-color: var(--vscode-errorForeground);
+}
+
+.severity-warning {
+  border-left-color: var(--vscode-editorWarning-foreground);
+}
+
+.severity-suggestion {
+  border-left-color: var(--vscode-charts-green);
 }
 
 pre {

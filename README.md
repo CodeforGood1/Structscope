@@ -1,34 +1,28 @@
 # Struct Scope
 
-Struct Scope is a local-first Visual Studio Code extension and command-line tool for inspecting the memory layout of C, C++, and Rust data structures. It parses source files, extracts struct-like definitions, computes ABI-aware field placement, and presents byte offsets, field sizes, alignment, padding, cache-line split risks, and reorder opportunities without requiring a compiler invocation.
+Struct Scope is a local-first Visual Studio Code extension and command-line tool for inspecting memory layout in C, C++, and Rust. It parses source files, extracts struct-like definitions, computes ABI-aware field placement, and reports byte offsets, field sizes, alignment, padding, cache-line split risks, platform differences, and rule-based improvement guidance without invoking a compiler.
 
-The extension is intended for systems programming, embedded development, performance tuning, protocol design, and low-level code review workflows where object layout affects memory footprint, binary compatibility, cache behavior, or wire-format design.
+The project is designed for systems programming, embedded development, performance engineering, protocol design, and low-level code review workflows where object layout affects memory footprint, binary compatibility, cache behavior, or wire-format design.
 
-## Core Capabilities
+## Capabilities
 
-- Static layout analysis for C structs, C++ structs/classes with data members, and Rust structs
-- ABI-aware size and alignment calculations for supported target platforms
-- Visual byte map with colored field regions and distinct padding cells
+- Static analysis for C structs, C++ structs/classes with data members, and Rust structs
+- ABI-aware layout computation for `x86_64`, `arm64`, `arm32`, `avr`, and `riscv32`
+- Host ABI auto-detection with manual target-platform override
+- Visual byte map with field regions, padding cells, and cache-line boundaries
 - Field table with offsets, sizes, padding-after values, and cache-line notes
-- Padding waste metrics and greedy field reorder suggestions
-- Cache-line boundary detection for fields that straddle configured line sizes
-- VS Code diagnostics for padding hotspots and cache-line split fields
-- Analyze-on-save workflow for supported source files
-- Activity Bar dashboard, status bar command, editor title action, context menu command, and Command Palette command
-- Terminal CLI for scripting, CI checks, and non-editor workflows
-- Fully local execution with no network services or external analysis APIs
+- Rule-based, local-only improvement guidance with severity, confidence, and safe recommendations
+- Layout score and grade for quick prioritization
+- Greedy field reorder suggestions with expected byte savings
+- Platform comparison reports for pointer-width and ABI-sensitive structures
+- VS Code diagnostics for padding hotspots, high-waste structs, and cache-line split fields
+- Analyze-on-save workflow with optional automatic dashboard opening
+- Activity Bar dashboard, status bar command, editor title action, context menu action, and Command Palette commands
+- Terminal CLI for scripting, CI checks, JSON output, Markdown reports, and platform comparison
 
-## Version 2.0 Highlights
+## Safety Model
 
-Struct Scope 2.0 expands the original dashboard workflow into a more complete tool surface:
-
-- Host ABI auto-detection with manual platform override
-- Configurable default platform and cache-line size
-- Optional automatic dashboard opening after save-triggered analysis
-- Activity Bar dashboard with quick actions for analysis, output logs, and JSON export
-- Terminal CLI with table and JSON output modes
-- Improved webview accessibility labels and clearer UI text
-- Additional test coverage for CLI usage, host platform detection, local C analysis, cache-line splits, and server integration
+Struct Scope provides rule-based suggestions only. It does not rewrite source code automatically, execute generated code, fetch remote rules, or call model APIs. Every recommendation is returned with `safe: true` and `auto_apply: false`; the user remains responsible for deciding whether a layout change is compatible with ABI, serialization, protocol, or public API requirements.
 
 ## Requirements
 
@@ -37,7 +31,7 @@ Struct Scope 2.0 expands the original dashboard workflow into a more complete to
 - `pip`
 - Node.js and npm for development, testing, or packaging
 
-Install Python dependencies before running the backend or CLI:
+Install Python dependencies:
 
 ```sh
 pip install -r python/requirements.txt
@@ -45,38 +39,51 @@ pip install -r python/requirements.txt
 
 ## VS Code Usage
 
-Open a supported C, C++, header, or Rust source file. Struct Scope can be invoked through any of the following entry points:
+Open a supported C, C++, header, or Rust source file. Struct Scope can be invoked through:
 
-- Save the file when `structscope.analyzeOnSave` is enabled
-- Select `StructScope: Analyze Struct` from the Command Palette
-- Use `Ctrl+Shift+M` on Windows/Linux or `Cmd+Shift+M` on macOS
-- Click the Struct Scope status bar item
-- Use the editor title action or editor context menu
-- Use the Struct Scope Activity Bar dashboard
+- File save when `structscope.analyzeOnSave` is enabled
+- `StructScope: Analyze Struct` from the Command Palette
+- `Ctrl+Shift+M` on Windows/Linux or `Cmd+Shift+M` on macOS
+- The Struct Scope status bar item
+- The editor title action or editor context menu
+- The Struct Scope Activity Bar dashboard
 
-The dashboard renders the selected structure as a byte map, field table, metrics panel, cache-line ruler, and reorder suggestion panel. The platform selector can be changed manually. The Detect control re-runs host ABI detection and refreshes the layout.
+The dashboard renders the selected structure as a byte map, field table, metrics panel, rule insights panel, cache-line ruler, and reorder suggestion panel. The platform selector can be changed manually. The Detect control re-runs host ABI detection and refreshes the layout.
 
 ## Terminal Usage
 
-Analyze a source file from the command line:
+Analyze a source file:
 
 ```sh
 python python/cli.py tests/fixtures/v2_local_demo.c --platform x86_64
 ```
 
-Filter output to a specific struct:
+Filter output to one struct:
 
 ```sh
 python python/cli.py tests/fixtures/v2_local_demo.c --platform x86_64 --struct TelemetryPacket
 ```
 
-Emit JSON for scripts or CI tooling:
+Print rule guidance only:
+
+```sh
+python python/cli.py tests/fixtures/v2_local_demo.c --platform x86_64 --struct TelemetryPacket --rules-only
+```
+
+Compare target platforms:
+
+```sh
+python python/cli.py tests/fixtures/v2_local_demo.c --compare x86_64 arm32
+```
+
+Emit JSON or Markdown reports:
 
 ```sh
 python python/cli.py tests/fixtures/v2_local_demo.c --platform auto --json
+python python/cli.py tests/fixtures/v2_local_demo.c --platform x86_64 --markdown
 ```
 
-Example output for the included local C fixture:
+Example local C output:
 
 ```text
 TelemetryPacket: total=40B padding=18B (45.0%) optimal=24B savings=16B
@@ -85,8 +92,6 @@ warning: Field value straddles cache line boundary
 ```
 
 ## Configuration
-
-The extension contributes the following settings:
 
 | Setting | Description |
 | --- | --- |
@@ -119,29 +124,27 @@ The `auto` platform option detects the host ABI. Cross-compilation targets canno
 
 Struct Scope is split into a TypeScript VS Code extension and a Python analysis backend.
 
-- The VS Code extension manages commands, diagnostics, status bar state, Activity Bar actions, webview rendering, and the Python child process.
-- The Python backend uses tree-sitter grammars to parse source text and extract structure definitions.
-- Layout computation is performed with deterministic ABI tables and standard alignment arithmetic.
-- Communication between VS Code and Python uses newline-delimited JSON over stdio.
-- The webview uses local HTML, CSS, and JavaScript assets only.
+- `src/extension.ts` manages VS Code commands, diagnostics, status bar state, Activity Bar entries, the webview, and the Python child process.
+- `python/server.py` exposes newline-delimited JSON-RPC over stdio.
+- `python/cli.py` provides terminal access to the same analysis pipeline.
+- `python/parser_c.py` and `python/parser_rust.py` extract structure definitions with tree-sitter.
+- `python/layout_engine.py` computes ABI layout with deterministic alignment arithmetic.
+- `python/analyser.py` and `python/rules_engine.py` compute waste, cache-line risks, layout grade, and safe guidance.
+- `python/platforms.py` contains ABI tables and host platform detection.
+- `webview/` contains the local dashboard UI assets.
 
-No source code is sent to cloud services, telemetry endpoints, model APIs, compiler services, or third-party analysis systems.
+No source code is sent to cloud services, telemetry endpoints, compiler services, third-party analysis systems, or model APIs.
 
 ## Development
 
-Run the Python test suite:
+Run tests:
 
 ```sh
 pytest tests/ -v
-```
-
-Run the server integration script:
-
-```sh
 python tests/test_server_integration.py
 ```
 
-Run TypeScript checks and build the extension bundle:
+Run TypeScript checks and build:
 
 ```sh
 npx tsc --noEmit
@@ -153,25 +156,6 @@ Package the extension:
 ```sh
 npx @vscode/vsce package
 ```
-
-Install the generated VSIX:
-
-```sh
-code --install-extension struct-scope-2.0.0.vsix
-```
-
-## Repository Contents
-
-- `src/extension.ts`: VS Code extension entry point
-- `python/server.py`: JSON-RPC analysis server
-- `python/cli.py`: command-line interface
-- `python/parser_c.py`: C/C++ parser
-- `python/parser_rust.py`: Rust parser
-- `python/layout_engine.py`: ABI layout engine
-- `python/analyser.py`: padding, cache-line, and warning analysis
-- `python/platforms.py`: platform ABI tables and host detection
-- `webview/`: dashboard UI assets
-- `tests/`: parser, layout, analyser, CLI, and integration tests
 
 ## License
 

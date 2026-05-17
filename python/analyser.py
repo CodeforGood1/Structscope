@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from layout_engine import compute_layout
 from platforms import get_platform
+from rules_engine import evaluate_rules
 from suggester import suggest_order
 
 
@@ -42,7 +43,7 @@ def analyse(layout_result: dict, platform_name: str, cache_line_size: int = 64) 
             )
             warnings.append(f"Field {name} straddles cache line boundary")
 
-    return {
+    result = {
         "waste_bytes": waste_bytes,
         "waste_ratio": waste_ratio,
         "optimal_size": optimal_size,
@@ -51,3 +52,9 @@ def analyse(layout_result: dict, platform_name: str, cache_line_size: int = 64) 
         "warnings": warnings,
         "optimal_order": optimal_order,
     }
+    rule_result = evaluate_rules(layout_result, result, platform_name, cache_line_size)
+    result["layout_score"] = rule_result["score"]
+    result["layout_grade"] = rule_result["grade"]
+    result["rules"] = rule_result["rules"]
+    result["rule_count"] = rule_result["rule_count"]
+    return result

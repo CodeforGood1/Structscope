@@ -59,6 +59,19 @@ def run_integration():
         )
         assert auto["platform"] in platforms["platforms"], auto
         assert auto["requested_platform"] == "auto", auto
+        assert auto["structs"][0]["analysis"]["rules"] is not None
+
+        comparison = rpc(
+            {
+                "method": "compare_platforms",
+                "source": "struct Ptr { char tag; void *p; char tail; };",
+                "language": "c",
+                "platforms": ["x86_64", "arm32"],
+                "cache_line": 64,
+            }
+        )
+        ptr_summary = comparison["summary"]["Ptr"]
+        assert ptr_summary["by_platform"]["x86_64"]["total_size"] != ptr_summary["by_platform"]["arm32"]["total_size"]
     finally:
         if proc.stdin is not None:
             proc.stdin.close()
@@ -72,4 +85,3 @@ def test_server_integration():
 if __name__ == "__main__":
     run_integration()
     print("Integration test PASSED")
-

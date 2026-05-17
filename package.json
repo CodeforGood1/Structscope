@@ -2,7 +2,7 @@
   "name": "struct-scope",
   "displayName": "Struct Scope",
   "publisher": "BlackplaneSystems",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Visualize C, C++, and Rust struct memory layout, padding, cache-line splits, and reorder suggestions.",
   "author": {
     "name": "Brahadeesh V Ra",
@@ -115,13 +115,24 @@
         "structscope.defaultPlatform": {
           "type": "string",
           "default": "auto",
-          "enum": ["auto", "x86_64", "arm64", "arm32", "avr", "riscv32"],
+          "enum": [
+            "auto",
+            "x86_64",
+            "arm64",
+            "arm32",
+            "avr",
+            "riscv32"
+          ],
           "description": "Default ABI platform. Use auto to detect the local host ABI."
         },
         "structscope.cacheLine": {
           "type": "number",
           "default": 64,
-          "enum": [32, 64, 128],
+          "enum": [
+            32,
+            64,
+            128
+          ],
           "description": "Default cache-line size in bytes."
         },
         "structscope.analyzeOnSave": {

@@ -163,12 +163,74 @@ def analyse_source(source: str, language: str, platform_name: str = "x86_64", ca
     }
 
 
+def compare_platforms(
+    source: str,
+    language: str,
+    platforms: list[str] | None = None,
+    cache_line: int = 64,
+) -> dict[str, Any]:
+    requested = platforms or list(PLATFORMS.keys())
+    comparisons = [analyse_source(source, language, platform, cache_line) for platform in requested]
+    summary: dict[str, dict[str, Any]] = {}
+
+    for comparison in comparisons:
+        platform_name = str(comparison.get("platform"))
+        for struct in comparison.get("structs", []):
+            name = str(struct.get("name"))
+            total_size = int(struct["layout"]["total_size"])
+            waste = int(struct["analysis"]["waste_bytes"])
+            entry = summary.setdefault(
+                name,
+                {
+                    "min_size": total_size,
+                    "max_size": total_size,
+                    "best_platforms": [],
+                    "worst_platforms": [],
+                    "by_platform": {},
+                },
+            )
+            entry["min_size"] = min(int(entry["min_size"]), total_size)
+            entry["max_size"] = max(int(entry["max_size"]), total_size)
+            entry["by_platform"][platform_name] = {
+                "total_size": total_size,
+                "waste_bytes": waste,
+                "grade": struct["analysis"].get("layout_grade"),
+            }
+
+    for entry in summary.values():
+        min_size = int(entry["min_size"])
+        max_size = int(entry["max_size"])
+        entry["best_platforms"] = [
+            platform for platform, values in entry["by_platform"].items() if values["total_size"] == min_size
+        ]
+        entry["worst_platforms"] = [
+            platform for platform, values in entry["by_platform"].items() if values["total_size"] == max_size
+        ]
+
+    return {
+        "platforms": requested,
+        "cache_line": cache_line,
+        "comparisons": comparisons,
+        "summary": summary,
+    }
+
+
 def _analyse_request(payload: dict[str, Any]) -> dict[str, Any]:
     source = str(payload.get("source") or "")
     language = str(payload.get("language") or "c")
     platform_name = str(payload.get("platform") or "x86_64")
     cache_line = int(payload.get("cache_line") or 64)
     return analyse_source(source, language, platform_name, cache_line)
+
+
+def _compare_request(payload: dict[str, Any]) -> dict[str, Any]:
+    source = str(payload.get("source") or "")
+    language = str(payload.get("language") or "c")
+    platforms = payload.get("platforms")
+    cache_line = int(payload.get("cache_line") or 64)
+    if platforms is not None and not isinstance(platforms, list):
+        raise ValueError("platforms must be a list of platform names")
+    return compare_platforms(source, language, platforms, cache_line)
 
 
 def handle_request(request: dict[str, Any]) -> dict[str, Any]:
@@ -181,6 +243,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any]:
         return detect_host_platform_info()
     if method == "analyse":
         return _analyse_request(request)
+    if method == "compare_platforms":
+        return _compare_request(request)
     raise ValueError(f"Unknown method: {method}")
 
 

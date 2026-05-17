@@ -54,3 +54,17 @@ def test_waste_ratio_zero_for_no_padding():
     result = analyse(layout, "x86_64", 64)
     assert result["waste_ratio"] == 0.0
     assert result["waste_bytes"] == 0
+
+
+def test_rule_engine_reports_safe_padding_guidance():
+    fields = [
+        {"name": "tag", "type": "char", "raw_type": "char", "size": 1, "alignment": 1},
+        {"name": "value", "type": "double", "raw_type": "double", "size": 8, "alignment": 8},
+        {"name": "state", "type": "char", "raw_type": "char", "size": 1, "alignment": 1},
+    ]
+    layout = compute_layout(fields, PLATFORMS["x86_64"])
+    result = analyse(layout, "x86_64", 64)
+    assert result["layout_score"] < 100
+    assert result["layout_grade"] in {"B", "C", "D", "F"}
+    assert any(rule["id"] == "padding.high_waste" for rule in result["rules"])
+    assert all(rule["safe"] and not rule["auto_apply"] for rule in result["rules"])

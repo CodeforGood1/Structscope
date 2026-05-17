@@ -16,7 +16,8 @@ const state = {
   fieldColors: new Map(),
   platform: 'x86_64',
   platformSource: 'manual',
-  cacheLine: 64
+  cacheLine: 64,
+  lastJson: ''
 };
 
 window.structscope = {
@@ -27,9 +28,12 @@ window.structscope = {
 const els = {
   platform: document.getElementById('platform'),
   detectPlatform: document.getElementById('detect-platform'),
+  copyJson: document.getElementById('copy-json'),
+  copyReport: document.getElementById('copy-report'),
   cacheLine: document.getElementById('cache-line'),
   byteMap: document.getElementById('byte-map'),
   fieldTable: document.getElementById('field-table'),
+  insights: document.getElementById('insights'),
   suggestions: document.getElementById('suggestions'),
   metrics: document.getElementById('metrics')
 };
@@ -42,6 +46,7 @@ window.addEventListener('message', (event) => {
   if (message.type === 'layout') {
     console.log('Received layout:', message.data);
     state.lastStruct = message.data;
+    state.lastJson = JSON.stringify(message.data, null, 2);
     state.platform = message.data.platform || state.platform;
     state.platformSource = message.data.platform_source || state.platformSource || 'manual';
     state.cacheLine = Number(message.data.cache_line || state.cacheLine || 64);
@@ -82,6 +87,22 @@ if (els.cacheLine) {
   });
 }
 
+if (els.copyJson) {
+  els.copyJson.addEventListener('click', async () => {
+    if (state.lastJson) {
+      await navigator.clipboard.writeText(state.lastJson);
+    }
+  });
+}
+
+if (els.copyReport) {
+  els.copyReport.addEventListener('click', async () => {
+    if (state.lastStruct) {
+      await navigator.clipboard.writeText(buildMarkdownReport(state.lastStruct));
+    }
+  });
+}
+
 function renderStruct(structData) {
   const layout = structData.layout;
   const analysis = structData.analysis;
@@ -91,6 +112,7 @@ function renderStruct(structData) {
   renderMetrics(layout, analysis, els.metrics);
   renderByteMapWithRuler(cells, layout, analysis, els.byteMap, state.cacheLine);
   renderFieldTable(layout, analysis, els.fieldTable);
+  renderInsights(structData, els.insights);
   renderSuggestions(structData.name, layout, analysis, els.suggestions);
 }
 
@@ -287,6 +309,51 @@ function renderSuggestions(structName, layoutResult, analysisResult, suggestEl) 
   }
 }
 
+function renderInsights(structData, insightsEl) {
+  if (!insightsEl) {
+    return;
+  }
+  insightsEl.replaceChildren();
+  const analysis = structData.analysis || {};
+  const header = document.createElement('div');
+  header.className = 'insights-header';
+  header.textContent = `Layout grade ${analysis.layout_grade || 'N/A'} - score ${analysis.layout_score ?? 'N/A'}/100`;
+  insightsEl.appendChild(header);
+
+  const rules = analysis.rules || [];
+  if (!rules.length) {
+    const empty = document.createElement('div');
+    empty.className = 'insight-card';
+    empty.textContent = 'No rule-based issues detected for this layout.';
+    insightsEl.appendChild(empty);
+    return;
+  }
+
+  rules.forEach((rule) => {
+    const card = document.createElement('article');
+    card.className = `insight-card severity-${rule.severity}`;
+
+    const title = document.createElement('h2');
+    title.textContent = `${rule.title} (${rule.severity})`;
+    card.appendChild(title);
+
+    const message = document.createElement('p');
+    message.textContent = rule.message;
+    card.appendChild(message);
+
+    const recommendation = document.createElement('p');
+    recommendation.className = 'insight-recommendation';
+    recommendation.textContent = rule.recommendation;
+    card.appendChild(recommendation);
+
+    const meta = document.createElement('div');
+    meta.className = 'insight-meta';
+    meta.textContent = `${rule.id} | ${rule.category} | confidence: ${rule.confidence} | auto-apply: no`;
+    card.appendChild(meta);
+    insightsEl.appendChild(card);
+  });
+}
+
 function renderMetrics(layoutResult, analysisResult, metricsEl) {
   if (!metricsEl) {
     return;
@@ -347,4 +414,31 @@ function formatFieldDeclaration(field) {
 
 function percentage(value) {
   return `${(Number(value || 0) * 100).toFixed(1)}%`;
+}
+
+function buildMarkdownReport(structData) {
+  const layout = structData.layout;
+  const analysis = structData.analysis;
+  const lines = [
+    `# StructScope Report: ${structData.name}`,
+    '',
+    `- Platform: \`${state.platform}\``,
+    `- Cache line: \`${state.cacheLine}B\``,
+    `- Total size: \`${layout.total_size} bytes\``,
+    `- Padding: \`${analysis.waste_bytes} bytes (${percentage(analysis.waste_ratio)})\``,
+    `- Grade: \`${analysis.layout_grade || 'N/A'} (${analysis.layout_score ?? 'N/A'}/100)\``,
+    '',
+    '| Field | Type | Offset | Size | Padding after |',
+    '| --- | --- | ---: | ---: | ---: |'
+  ];
+  (layout.fields || []).forEach((field) => {
+    lines.push(`| ${field.name} | ${field.raw_type || field.type || ''} | ${field.offset} | ${field.size} | ${field.padding_after || 0} |`);
+  });
+  if ((analysis.rules || []).length) {
+    lines.push('', '## Rule-based guidance', '');
+    analysis.rules.forEach((rule) => {
+      lines.push(`- **${rule.title}** (${rule.severity}): ${rule.recommendation}`);
+    });
+  }
+  return lines.join('\n');
 }

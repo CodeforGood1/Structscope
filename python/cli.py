@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sys
 
-from server import analyse_source
+from server import analyse_source, compare_platforms
 
 
 EXTENSION_LANGUAGE = {
@@ -40,6 +40,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache-line", type=int, default=64, help="Cache-line size in bytes")
     parser.add_argument("--struct", dest="struct_name", help="Print only one struct by name")
     parser.add_argument("--json", action="store_true", help="Emit full JSON instead of a compact table")
+    parser.add_argument("--compare", nargs="*", help="Compare platforms. With no names, compares all platforms.")
+    parser.add_argument("--rules-only", action="store_true", help="Print only rule-based guidance")
+    parser.add_argument("--markdown", action="store_true", help="Emit a Markdown report")
     return parser
 
 
@@ -70,6 +73,70 @@ def print_table(result: dict, struct_name: str | None) -> None:
             )
         for warning in analysis.get("warnings", []):
             print(f"  warning: {warning}")
+        for rule in analysis.get("rules", []):
+            print(f"  {rule['severity']}: {rule['title']} - {rule['recommendation']}")
+
+
+def print_rules(result: dict, struct_name: str | None) -> None:
+    structs = _filter_structs(result, struct_name)
+    if not structs:
+        raise SystemExit("No matching structs found.")
+    print(f"StructScope rules | platform={result.get('platform')} cache_line={result.get('cache_line')}B")
+    for struct in structs:
+        analysis = struct["analysis"]
+        print()
+        print(f"{struct['name']}: grade={analysis.get('layout_grade')} score={analysis.get('layout_score')}")
+        for rule in analysis.get("rules", []):
+            field_suffix = f" fields={','.join(rule['fields'])}" if rule.get("fields") else ""
+            print(f"  [{rule['severity']}] {rule['id']}: {rule['message']}{field_suffix}")
+            print(f"      recommendation: {rule['recommendation']}")
+
+
+def print_markdown(result: dict, struct_name: str | None) -> None:
+    structs = _filter_structs(result, struct_name)
+    print(f"# StructScope Report\n")
+    print(f"- Platform: `{result.get('platform')}`")
+    print(f"- Cache line: `{result.get('cache_line')}B`\n")
+    for struct in structs:
+        layout = struct["layout"]
+        analysis = struct["analysis"]
+        print(f"## {struct['name']}\n")
+        print(f"- Total size: `{layout['total_size']} bytes`")
+        print(f"- Padding: `{analysis['waste_bytes']} bytes ({analysis['waste_ratio'] * 100:.1f}%)`")
+        print(f"- Optimal size: `{analysis['optimal_size']} bytes`")
+        print(f"- Grade: `{analysis.get('layout_grade')}` (`{analysis.get('layout_score')}/100`)\n")
+        print("| Field | Type | Offset | Size | Padding after |")
+        print("| --- | --- | ---: | ---: | ---: |")
+        for field in layout["fields"]:
+            print(
+                f"| {field['name']} | {field.get('raw_type') or field.get('type') or ''} | "
+                f"{field['offset']} | {field['size']} | {field.get('padding_after', 0)} |"
+            )
+        if analysis.get("rules"):
+            print("\n### Rule-based guidance\n")
+            for rule in analysis["rules"]:
+                print(f"- **{rule['title']}** (`{rule['severity']}`): {rule['recommendation']}")
+        print()
+
+
+def print_compare(result: dict, struct_name: str | None) -> None:
+    print(f"StructScope platform comparison | cache_line={result.get('cache_line')}B")
+    for name, summary in sorted(result.get("summary", {}).items()):
+        if struct_name and name != struct_name:
+            continue
+        print()
+        print(f"{name}: min={summary['min_size']}B max={summary['max_size']}B best={','.join(summary['best_platforms'])}")
+        print("  platform    size  waste  grade")
+        print("  ------------------------------")
+        for platform, values in sorted(summary["by_platform"].items()):
+            print(f"  {platform:10} {values['total_size']:>4}  {values['waste_bytes']:>5}  {values['grade']}")
+
+
+def _filter_structs(result: dict, struct_name: str | None) -> list[dict]:
+    structs = result.get("structs", [])
+    if struct_name:
+        return [item for item in structs if item.get("name") == struct_name]
+    return structs
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -77,6 +144,16 @@ def main(argv: list[str] | None = None) -> int:
     source_path = args.file
     source = source_path.read_text(encoding="utf-8")
     language = infer_language(source_path, args.language)
+    if args.compare is not None:
+        platforms = args.compare if args.compare else None
+        result = compare_platforms(source, language, platforms, args.cache_line)
+        if args.json:
+            json.dump(result, sys.stdout, indent=2)
+            print()
+        else:
+            print_compare(result, args.struct_name)
+        return 0
+
     result = analyse_source(source, language, args.platform, args.cache_line)
     if args.json:
         if args.struct_name:
@@ -86,6 +163,10 @@ def main(argv: list[str] | None = None) -> int:
             }
         json.dump(result, sys.stdout, indent=2)
         print()
+    elif args.markdown:
+        print_markdown(result, args.struct_name)
+    elif args.rules_only:
+        print_rules(result, args.struct_name)
     else:
         print_table(result, args.struct_name)
     return 0
@@ -93,4 +174,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
